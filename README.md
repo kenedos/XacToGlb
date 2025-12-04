@@ -110,3 +110,7 @@ XacToGlb/
 
 ### Output
 - `.glb` - GLTF 2.0 binary format with embedded textures and animations
+
+## Credits
+
+All credits go to [SalmanTKhan](https://github.com/SalmanTKhan)
