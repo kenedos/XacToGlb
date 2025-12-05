@@ -166,9 +166,22 @@ def export_to_gltf(xac_path: str, output_gltf_path: str, texture_search_paths: L
     final_skeleton_roots = []
     if skeleton_data:
         for i, node in enumerate(skeleton_data.nodes):
-            mat = get_local_transform(node, skeleton_data.mul_order)
-            t, r, s = pyrr.matrix44.decompose(mat)
-            gltf_node = Node(name=node.node_name, translation=t.tolist(), rotation=r.tolist(), scale=s.tolist())
+            # Apply swizzle directly to TRS values (don't use matrix decomposition)
+            # This preserves the exact values for round-trip conversion
+            pos_x, pos_y, pos_z = node.local_pos
+            swizzled_pos = [-pos_x, pos_z, pos_y]
+
+            quat_x, quat_y, quat_z, quat_w = node.local_quat
+            swizzled_quat = [-quat_x, quat_z, quat_y, -quat_w]
+            # Normalize quaternion
+            q_len = (swizzled_quat[0]**2 + swizzled_quat[1]**2 + swizzled_quat[2]**2 + swizzled_quat[3]**2) ** 0.5
+            if q_len > 0:
+                swizzled_quat = [q / q_len for q in swizzled_quat]
+
+            # Scale is not swizzled
+            swizzled_scale = list(node.local_scale)
+
+            gltf_node = Node(name=node.node_name, translation=swizzled_pos, rotation=swizzled_quat, scale=swizzled_scale)
             gltf.nodes.append(gltf_node)
             node_map[i] = len(gltf.nodes) - 1
 
