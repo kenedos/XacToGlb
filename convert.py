@@ -16,6 +16,7 @@ Options:
 
 import argparse
 import os
+import shutil
 import sys
 import time
 from pathlib import Path
@@ -238,8 +239,12 @@ Examples:
     input_dir = Path(args.input) if args.input else script_dir / "input"
     output_dir = Path(args.output) if args.output else script_dir / "output"
 
-    # Create directories if they don't exist
+    # Create input directory if it doesn't exist
     input_dir.mkdir(parents=True, exist_ok=True)
+
+    # Clean and recreate output directory
+    if output_dir.exists():
+        shutil.rmtree(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
 
     print("=" * 60)

@@ -116,6 +116,11 @@ def export_to_gltf(xac_path: str, output_gltf_path: str, texture_search_paths: L
     if not meshes:
         raise ValueError(f"No renderable meshes found in {xac_path}")
 
+    # Check if any mesh has actual skinning data - if not, this is a billboard/static model
+    has_skinned_meshes = any(m.skinning_data is not None for m in meshes if not m.is_collision)
+    if not has_skinned_meshes:
+        skeleton_data = None  # Treat as static geometry
+
     gltf = GLTF2(asset={"version": "2.0", "generator": "XacToGlb-Converter"})
     blob = bytearray()
     gltf.buffers = [Buffer(byteLength=0)]
@@ -230,6 +235,9 @@ def export_to_gltf(xac_path: str, output_gltf_path: str, texture_search_paths: L
         normals = None
         if r_mesh.normals is not None and r_mesh.normals.size > 0:
             normals = r_mesh.normals.copy().astype(np.float32)
+            # For static/billboard meshes, flip normals to match flipped triangle winding
+            if not skeleton_data:
+                normals = -normals
             with np.errstate(divide='ignore', invalid='ignore'):
                 norm_lengths = np.linalg.norm(normals, axis=1, keepdims=True)
                 non_zero_mask = norm_lengths > 1e-6
@@ -250,7 +258,12 @@ def export_to_gltf(xac_path: str, output_gltf_path: str, texture_search_paths: L
 
         primitives = []
         for sub in r_mesh.sub_meshes:
-            idx_idx = _add_accessor(gltf, blob, sub['indices'], UNSIGNED_INT, SCALAR, ELEMENT_ARRAY_BUFFER)
+            indices = sub['indices'].copy()
+            # For static/billboard meshes, flip triangle winding to fix face direction
+            if not skeleton_data:
+                indices = indices.reshape(-1, 3)
+                indices = indices[:, [0, 2, 1]].flatten()
+            idx_idx = _add_accessor(gltf, blob, indices, UNSIGNED_INT, SCALAR, ELEMENT_ARRAY_BUFFER)
             attrs = {"POSITION": pos_idx}
             if norm_idx != -1:
                 attrs["NORMAL"] = norm_idx
@@ -345,11 +358,19 @@ def export_to_gltf(xac_path: str, output_gltf_path: str, texture_search_paths: L
                 gltf.animations.append(Animation(name=anim_name, channels=anim_channels, samplers=anim_samplers))
 
     # Create a master root node to orient the model correctly
-    root_rotation_matrix = pyrr.matrix44.create_from_x_rotation(math.radians(-90.0))
-    _, r, _ = pyrr.matrix44.decompose(root_rotation_matrix)
-
-    model_root_node = Node(name="ModelRoot", rotation=r.tolist())
-    model_root_node.children = mesh_nodes + (final_skeleton_roots if skeleton_data else [])
+    model_root_node = Node(name="ModelRoot")
+    if skeleton_data:
+        # For skinned models, apply -90 deg X rotation
+        root_rotation_matrix = pyrr.matrix44.create_from_x_rotation(math.radians(-90.0))
+        _, r, _ = pyrr.matrix44.decompose(root_rotation_matrix)
+        model_root_node.rotation = r.tolist()
+        model_root_node.children = mesh_nodes + final_skeleton_roots
+    else:
+        # For static/billboard models, apply -90 deg Z rotation
+        root_rotation_matrix = pyrr.matrix44.create_from_z_rotation(math.radians(-90.0))
+        _, r, _ = pyrr.matrix44.decompose(root_rotation_matrix)
+        model_root_node.rotation = r.tolist()
+        model_root_node.children = mesh_nodes
     gltf.nodes.append(model_root_node)
     model_root_node_idx = len(gltf.nodes) - 1
 

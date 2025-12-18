@@ -883,6 +883,7 @@ def extract_renderable_data(
         skin_info = skinning_map.get(mesh_chunk.node_index)
 
         if skeleton_data and skin_info and skin_info.table and skin_info.influences:
+            # Real skinning data from XAC file
             num_verts = mesh_chunk.total_verts
             bone_ids = np.zeros((num_verts, 4), dtype=np.int32)
             bone_weights = np.zeros((num_verts, 4), dtype=np.float32)
